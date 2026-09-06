@@ -1,0 +1,13 @@
+[project]
+name = "chore-roster"
+version = "1.0.0"
+description = "Chore Roster — a shared household chores tracker (Django REST backend + JS frontend)"
+requires-python = ">=3.12"
+dependencies = [
+    "django>=5.0",
+    "djangorestframework>=3.15",
+    "django-cors-headers>=4.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/DataTalksClub/ai-dev-tools-zoomcamp"
