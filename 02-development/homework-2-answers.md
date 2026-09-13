@@ -1,7 +1,5 @@
 # Homework 2 — Answers (TableTurn)
 
-Submission: https://courses.datatalks.club/ai-dev-tools-2026/homework/hw2
-Deadline: 15 September 2026 (Tue), 02:30 (Asia/Tehran)
 
 ---
 
