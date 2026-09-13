@@ -1,0 +1,565 @@
+openapi: 3.1.0
+info:
+  title: TableTurn API
+  version: 1.0.0
+  description: |
+    Host-side waitlist manager for restaurants.
+
+    This file is the source of truth between `frontend/` and `backend/`.
+    `tests/test_contract.py` fails if the implemented FastAPI routes drift
+    from what is declared here.
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Local development backend
+
+tags:
+  - name: parties
+    description: Waitlist parties
+  - name: tables
+    description: Floor tables
+  - name: stats
+    description: Shift statistics
+  - name: health
+    description: Liveness
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      operationId: health
+      summary: Liveness probe
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+
+  /api/parties:
+    get:
+      tags: [parties]
+      operationId: listParties
+      summary: List parties
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Filter by status. Omit to return every party.
+          schema:
+            $ref: "#/components/schemas/PartyStatus"
+      responses:
+        "200":
+          description: Parties, ordered by position for waiting parties
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Party"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    post:
+      tags: [parties]
+      operationId: createParty
+      summary: Add a party to the waitlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartyCreate"
+      responses:
+        "201":
+          description: Party created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Party"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/parties/{party_id}:
+    parameters:
+      - $ref: "#/components/parameters/PartyId"
+    get:
+      tags: [parties]
+      operationId: getParty
+      summary: Fetch one party
+      responses:
+        "200":
+          description: The party
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Party"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [parties]
+      operationId: updateParty
+      summary: Edit a waiting party
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartyUpdate"
+      responses:
+        "200":
+          description: Updated party
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Party"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [parties]
+      operationId: deleteParty
+      summary: Hard-delete a party (data-entry mistakes)
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/parties/{party_id}/seat:
+    parameters:
+      - $ref: "#/components/parameters/PartyId"
+    post:
+      tags: [parties]
+      operationId: seatParty
+      summary: Seat a waiting party at a free table
+      description: |
+        Fails with `409` if the party is not waiting, the table does not exist,
+        the table is occupied, or the table is too small (rule R3).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SeatRequest"
+      responses:
+        "200":
+          description: Seated party
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Party"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/parties/{party_id}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/PartyId"
+    post:
+      tags: [parties]
+      operationId: cancelParty
+      summary: Cancel a waiting party
+      description: Only allowed from `waiting` (rule R7).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelRequest"
+      responses:
+        "200":
+          description: Cancelled party
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Party"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/tables:
+    get:
+      tags: [tables]
+      operationId: listTables
+      summary: List tables
+      responses:
+        "200":
+          description: Tables ordered by name
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Table"
+    post:
+      tags: [tables]
+      operationId: createTable
+      summary: Add a table
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TableCreate"
+      responses:
+        "201":
+          description: Table created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Table"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/tables/{table_id}:
+    parameters:
+      - $ref: "#/components/parameters/TableId"
+    patch:
+      tags: [tables]
+      operationId: updateTable
+      summary: Rename a table or change its capacity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TableUpdate"
+      responses:
+        "200":
+          description: Updated table
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Table"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [tables]
+      operationId: deleteTable
+      summary: Delete a free table
+      description: Occupied tables cannot be deleted (rule R8).
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/tables/{table_id}/free:
+    parameters:
+      - $ref: "#/components/parameters/TableId"
+    post:
+      tags: [tables]
+      operationId: freeTable
+      summary: Turn a table
+      description: |
+        Sets the table back to `free` and moves the occupying party to
+        `completed` (rule R6). Turning an already-free table returns `409`.
+      responses:
+        "200":
+          description: Freed table
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Table"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/stats:
+    get:
+      tags: [stats]
+      operationId: getStats
+      summary: Shift statistics
+      responses:
+        "200":
+          description: Current stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Stats"
+
+components:
+  parameters:
+    PartyId:
+      name: party_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TableId:
+      name: table_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    NotFound:
+      description: Resource does not exist
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Conflict:
+      description: Request conflicts with the current state (business rule)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    ValidationError:
+      description: Request body or query parameter failed validation
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: array
+                items:
+                  type: object
+
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          examples: ["ok"]
+        database:
+          type: string
+          examples: ["ok"]
+
+    PartyStatus:
+      type: string
+      enum: [waiting, seated, completed, cancelled]
+
+    TableStatus:
+      type: string
+      enum: [free, occupied]
+
+    Party:
+      type: object
+      required:
+        - id
+        - name
+        - party_size
+        - status
+        - created_at
+        - seated_at
+        - table_id
+        - cancel_reason
+        - position
+        - estimated_wait_minutes
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 80
+        party_size:
+          type: integer
+          minimum: 1
+          maximum: 20
+        phone:
+          type: [string, "null"]
+        notes:
+          type: [string, "null"]
+        status:
+          $ref: "#/components/schemas/PartyStatus"
+        created_at:
+          type: string
+          format: date-time
+        seated_at:
+          type: [string, "null"]
+          format: date-time
+        table_id:
+          type: [string, "null"]
+          format: uuid
+        cancel_reason:
+          type: [string, "null"]
+        position:
+          description: 1-based place in the waiting list; null unless waiting
+          type: [integer, "null"]
+        estimated_wait_minutes:
+          description: (position - 1) * 10; null unless waiting
+          type: [integer, "null"]
+
+    PartyCreate:
+      type: object
+      required: [name, party_size]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        party_size:
+          type: integer
+          minimum: 1
+          maximum: 20
+        phone:
+          type: [string, "null"]
+          maxLength: 40
+        notes:
+          type: [string, "null"]
+          maxLength: 280
+
+    PartyUpdate:
+      type: object
+      description: Partial update. Only waiting parties can be edited.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        party_size:
+          type: integer
+          minimum: 1
+          maximum: 20
+        phone:
+          type: [string, "null"]
+          maxLength: 40
+        notes:
+          type: [string, "null"]
+          maxLength: 280
+
+    SeatRequest:
+      type: object
+      required: [table_id]
+      properties:
+        table_id:
+          type: string
+          format: uuid
+
+    CancelRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          enum: [no_show, walked, other]
+          default: other
+
+    Table:
+      type: object
+      required:
+        - id
+        - name
+        - capacity
+        - status
+        - occupied_by_party_id
+        - occupied_since
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 60
+        capacity:
+          type: integer
+          minimum: 1
+          maximum: 20
+        status:
+          $ref: "#/components/schemas/TableStatus"
+        occupied_by_party_id:
+          type: [string, "null"]
+          format: uuid
+        occupied_since:
+          type: [string, "null"]
+          format: date-time
+
+    TableCreate:
+      type: object
+      required: [name, capacity]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 60
+        capacity:
+          type: integer
+          minimum: 1
+          maximum: 20
+
+    TableUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 60
+        capacity:
+          type: integer
+          minimum: 1
+          maximum: 20
+
+    Stats:
+      type: object
+      required:
+        - waiting_count
+        - seated_count
+        - completed_count
+        - cancelled_count
+        - covers_waiting
+        - longest_wait_minutes
+        - average_wait_minutes
+        - free_tables
+        - occupied_tables
+        - free_seats
+      properties:
+        waiting_count:
+          type: integer
+        seated_count:
+          type: integer
+        completed_count:
+          type: integer
+        cancelled_count:
+          type: integer
+        covers_waiting:
+          type: integer
+        longest_wait_minutes:
+          type: integer
+        average_wait_minutes:
+          type: integer
+        free_tables:
+          type: integer
+        occupied_tables:
+          type: integer
+        free_seats:
+          type: integer
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              examples: ["party_not_found", "table_occupied", "table_too_small"]
+            message:
+              type: string
