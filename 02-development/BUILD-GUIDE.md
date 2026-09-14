@@ -395,6 +395,10 @@ npm i -D @testing-library/react @testing-library/dom \
 npm i -D eslint @eslint/js typescript-eslint globals
 ```
 
+<img width="1858" height="328" alt="image" src="https://github.com/user-attachments/assets/2e783f12-4b6a-4659-b69f-a83bf1a576fb" />
+
+<img width="1858" height="609" alt="image" src="https://github.com/user-attachments/assets/a1307235-b0e7-42b1-89c6-f2c9660322da" />
+
 Delete the boilerplate (`App.css`, the counter demo, the Vite/React logos) —
 leaving it in confuses the agent into styling around it.
 
