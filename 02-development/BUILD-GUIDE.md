@@ -216,6 +216,9 @@ for path, item in spec['paths'].items():
 "
 ```
 
+<img width="1769" height="587" alt="image" src="https://github.com/user-attachments/assets/bc1e158f-6c05-467d-be0f-0928b5e54516" />
+
+
 Every path from spec §8 appears, each with an `operationId`, and nothing extra.
 
 ### Design decisions worth copying
@@ -238,6 +241,11 @@ uv init --bare --name tableturn --python 3.12
 uv add fastapi "uvicorn[standard]" sqlalchemy pydantic
 uv add --dev pytest httpx pyyaml ruff
 ```
+<img width="1769" height="92" alt="image" src="https://github.com/user-attachments/assets/8051b1d7-3b9b-434d-9d51-301f8d94c66a" />
+
+
+<img width="1769" height="164" alt="image" src="https://github.com/user-attachments/assets/9054d3b4-77de-4b86-9ba0-f486b79e4235" />
+
 
 Then edit `pyproject.toml` — two settings are essential:
 
@@ -318,6 +326,12 @@ uv run pytest -q         # all green
 uv run ruff check .      # clean
 ```
 
+<img width="1769" height="297" alt="image" src="https://github.com/user-attachments/assets/dc33935d-eca7-46ed-acb6-e5e961ebdd63" />
+
+<img width="1769" height="68" alt="image" src="https://github.com/user-attachments/assets/5f09fad2-047c-4076-a763-19b4590b1fd3" />
+
+
+
 Then start it and hit it with curl — **in-process tests do not prove the server
 runs**:
 
@@ -328,12 +342,19 @@ curl -s localhost:8000/health
 curl -s -X POST localhost:8000/api/parties \
   -H 'Content-Type: application/json' -d '{"name":"Ava","party_size":4}'
 ```
+<img width="1858" height="137" alt="image" src="https://github.com/user-attachments/assets/956e3081-574f-4dff-89e7-2af1a82f2ac9" />
+
+<img width="1858" height="192" alt="image" src="https://github.com/user-attachments/assets/a936512e-954a-4aca-b5ad-5df3965b47c3" />
+
 
 ### **Q5 answer**
 
 ```
 uv run uvicorn backend.app.main:app --reload --port 8000
 ```
+
+<img width="1858" height="312" alt="image" src="https://github.com/user-attachments/assets/f9d6ba45-7615-4b1e-9ab8-b3ae6224e73d" />
+
 
 ### Pitfalls I hit here
 
