@@ -40,6 +40,8 @@ node -v                            # 20.19+ or 22.12+
 npm -v
 git --version
 ```
+<img width="1769" height="228" alt="image" src="https://github.com/user-attachments/assets/3d0acfcb-3b4f-4032-890b-e00c3db8a420" />
+
 
 ### Verification gate
 
