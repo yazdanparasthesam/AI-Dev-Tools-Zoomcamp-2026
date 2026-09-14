@@ -1,5 +1,10 @@
 # TableTurn — Illustrated Build Guide
 
+## Video Demo
+
+[Screencast from 09-14-2026 08:39:33 PM.webm](https://github.com/user-attachments/assets/dabfd92b-cd24-4def-b3a0-be43abcf39fa)
+
+
 How to build this project from nothing, with an AI coding agent, in the order
 that makes each step checkable. Every phase ends in a **verification gate**: a
 command you run before you're allowed to continue. Screenshots in
