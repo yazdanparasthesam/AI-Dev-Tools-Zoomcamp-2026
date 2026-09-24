@@ -1,0 +1,47 @@
+# Agent Relay app: Deployment (replicas + rolling updates = Q5's answer),
+# Service for in-cluster DNS + port-forward, probes on the starter's own
+# /ready (checks real DB tables) and /health endpoints.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  replicas: 2   # two workers racing for claims: FOR UPDATE SKIP LOCKED earns its keep
+  selector:
+    matchLabels: {app: relay}
+  template:
+    metadata:
+      labels: {app: relay}
+    spec:
+      initContainers:
+        - name: wait-postgres
+          image: postgres:16
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "until pg_isready -h postgres -U relay -d relay; do sleep 2; done"]
+      containers:
+        - name: app
+          image: agent-relay:local
+          imagePullPolicy: Never   # image exists only inside the kind node (kind load)
+          env:
+            - name: RELAY_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: relay-db, key: url}}
+          ports:
+            - containerPort: 8000
+          readinessProbe:
+            httpGet: {path: /ready, port: 8000}
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app
+spec:
+  selector: {app: relay}
+  ports:
+    - port: 8000
+      targetPort: 8000

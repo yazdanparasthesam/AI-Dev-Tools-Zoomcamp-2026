@@ -1,0 +1,48 @@
+# Agent Relay + PostgreSQL (Step 4, Q4)
+#
+# The API connects to the database service by its SERVICE NAME: `postgres`.
+# On the compose network every service name is a DNS name; `localhost` inside
+# the app container would mean the app container itself.
+#
+# Build notes for restricted networks (see HW3-RUNBOOK Step 3 pitfalls):
+#   sudo -E docker compose up --build
+# (-E keeps http_proxy/https_proxy in the client env; compose forwards them
+# into the build as predefined build args; build.network below fixes DNS.)
+
+name: agent-relay
+
+services:
+  app:
+    build:
+      context: .
+      network: host            # build container needs the host's DNS/routes
+    ports:
+      - "8000:8000"            # -p equivalent: publishes the API to the host
+    environment:
+      # +psycopg matters: bare postgresql:// makes SQLAlchemy load its default
+      # psycopg2 dialect, which is NOT installed (starter ships psycopg 3 via
+      # psycopg[binary]) → ModuleNotFoundError: No module named 'psycopg2'
+      # and a crash-loop. The driver suffix selects the psycopg3 dialect.
+      RELAY_DATABASE_URL: postgresql+psycopg://relay:relay@postgres:5432/relay
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: relay
+      POSTGRES_PASSWORD: relay
+      POSTGRES_DB: relay
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U relay -d relay"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    # deliberately NO ports: reachable only as `postgres` on the compose network
+
+volumes:
+  pgdata:
