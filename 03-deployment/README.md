@@ -72,17 +72,3 @@ these copies; `docs/` and this kit's additions are the new parts.
 | `evidence/63-step6-run5-smoke.png` | Step 6: smoke prints deployment image relay-1-77e9656; Job succeeded x2. |
 | `evidence/64-step6-forward-restart.png` | Step 6: port-forward restarted after the rollout (pitfall #11). |
 | `evidence/66-step6-6b-v2-curl.png` | Step 6b verified: live cluster serves <h1>Agent Relay v2</h1>. |
-
-Excluded on purpose: every frame of failed runs (run 2 boot crash, run 3
-honest-gate FATAL, run 4 TLS-timeout tail, run 5 first-attempt RBAC denial)
-and duplicate apt/sync/build scrollbacks. They remain narrated - with logs and
-diagrams - in RUNBOOK.md pitfalls #6-#11; the kit ships only winning frames.
-
-## Submission checklist
-
-1. homework URL = your fork (after the push above);
-2. learning-in-public links (<=7): pick from runbook sections/run posts;
-3. time spent: your honest total;
-4. optional FAQ URL: file `faq-issue-draft.md` via
-   https://github.com/DataTalksClub/faq/issues/new?template=faq-proposal.yml
-   and use the NEW issue URL (never someone else's closed issue).
