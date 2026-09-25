@@ -71,4 +71,4 @@ these copies; `docs/` and this kit's additions are the new parts.
 | `evidence/62-step6-run5-load-rollout.png` | Step 6: kind load + rollout status WAIT, replica by replica. |
 | `evidence/63-step6-run5-smoke.png` | Step 6: smoke prints deployment image relay-1-77e9656; Job succeeded x2. |
 | `evidence/64-step6-forward-restart.png` | Step 6: port-forward restarted after the rollout (pitfall #11). |
-| `evidence/66-step6-6b-v2-curl.png` | Step 6b verified: live cluster serves <h1>Agent Relay v2</h1>. |
+| `evidence/66-step6-6b-v2-curl.png` | Step 6b verified: live cluster serves <h1>Agent Relay v2</h1>.
