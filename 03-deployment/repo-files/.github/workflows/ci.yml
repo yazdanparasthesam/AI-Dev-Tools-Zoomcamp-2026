@@ -1,0 +1,157 @@
+# CI for Agent Relay — homework 3, step 6 (Q6).
+#
+# test job:   starter suite on SQLite + integration suite against a LIVE api
+#             backed by a PostgreSQL service container.
+# deploy job: builds a uniquely-tagged image, loads it into the LOCAL kind
+#             cluster and rolls it out — runs ONLY if test succeeded
+#             (needs: test). Failed tests ⇒ deploy skipped ⇒ the currently
+#             running version stays up. That is Q6's answer, enforced.
+#
+# Three act-vs-GitHub differences this file handles:
+#   * On GitHub, service-container ports are mapped onto localhost of the
+#     job. Under act, services are separate containers on a shared docker
+#     network, reachable BY SERVICE NAME — localhost:5432 is refused there.
+#     So the DB host is a variable: act passes --var DB_HOST=postgres,
+#     GitHub leaves vars.DB_HOST unset ⇒ default 'localhost'. Both correct.
+#   * act auto-mounts /var/run/docker.sock into EVERY job container. The
+#     deploy job must therefore NOT mount it again, or docker create dies
+#     with "Duplicate mount point: /var/run/docker.sock".
+#   * act tears down each step's docker-exec session (and its PROCESS GROUP)
+#     when the step ends. A server backgrounded with plain `&` dies with it,
+#     so the api is started with `setsid nohup … > /tmp/api.log 2>&1 &` —
+#     own session, own process group, stdout on a file.
+#
+# Local execution with act (deploy job targets your host's docker/kind):
+#   sudo act push -W .github/workflows/ci.yml -P ubuntu-latest=ubuntu:22.04 \
+#     --var DEPLOY_TARGET=kind-local --var DB_HOST=postgres \
+#     --env http_proxy=http://192.168.70.135:3128 \
+#     --env https_proxy=http://192.168.70.135:3128 \
+#     --env HTTP_PROXY=http://192.168.70.135:3128 \
+#     --env HTTPS_PROXY=http://192.168.70.135:3128 \
+#     --env no_proxy=localhost,127.0.0.1,postgres \
+#     --env NO_PROXY=localhost,127.0.0.1,postgres
+# On GitHub itself DEPLOY_TARGET is unset ⇒ deploy job skips cleanly.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  UV: /root/.local/bin/uv
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:22.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: relay
+          POSTGRES_PASSWORD: relay
+          POSTGRES_DB: relay
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U relay -d relay"
+          --health-interval 3s --health-timeout 3s --health-retries 10
+    steps:
+      - name: base tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git curl ca-certificates
+      - uses: actions/checkout@v4
+      - name: install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: sync deps from lockfile
+        run: $UV sync --frozen
+      - name: starter tests (sqlite)
+        run: $UV run pytest test_agent_relay.py -q
+      # Honest boot: the api is DETACHED (setsid+nohup, log to file) because
+      # act kills the step's whole process group at teardown — a plain `&`
+      # server dies between steps and the next step then sees nothing
+      # listening (run 3's "SKIPPED … no live relay" right after a green boot).
+      - name: boot api against postgres
+        env:
+          RELAY_DATABASE_URL: postgresql+psycopg://relay:relay@${{ vars.DB_HOST || 'localhost' }}:5432/relay
+        run: |
+          echo "DB target = ${RELAY_DATABASE_URL##*@}"
+          setsid nohup $UV run uvicorn main:app --host 127.0.0.1 --port 8005 \
+            > /tmp/api.log 2>&1 &
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8005/health; then ok=1; break; fi
+            sleep 1
+          done
+          if [ "$ok" != "1" ]; then
+            echo "FATAL: api never answered /health within 30s; last log lines:"
+            tail -40 /tmp/api.log || true
+            exit 1
+          fi
+          echo "api healthy; detached with setsid so it survives step teardown"
+      # Honest gate: the integration test skips cleanly when no live relay
+      # answers (so a local `uv run pytest -q` stays green) — in CI a skip is
+      # a vacuous green, so refuse to pass unless we literally see "1 passed",
+      # and dump the api log so any future failure explains itself.
+      - name: integration tests (live api + real postgres)
+        env:
+          BASE_URL: http://127.0.0.1:8005
+        run: |
+          out=$($UV run pytest tests/integration -q -rs 2>&1) || { echo "$out"; exit 1; }
+          echo "$out"
+          if ! echo "$out" | grep -q "1 passed"; then
+            echo "FATAL: integration test did not actually run (skipped?)"
+            echo "--- /tmp/api.log ---"
+            tail -40 /tmp/api.log || true
+            exit 1
+          fi
+
+  deploy:
+    name: deploy to local kind (gated on tests)
+    needs: test
+    if: vars.DEPLOY_TARGET == 'kind-local'
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:22.04
+      # host network: kubectl must reach the kind API server on
+      # 127.0.0.1:<port> exactly as the host does. NO docker.sock mount
+      # here — act adds it automatically and a duplicate kills docker
+      # create. The kubeconfig mount hands kubectl the cluster.
+      options: >-
+        --network host
+        -v /home/yazadanparast/.kube:/root/.kube
+    steps:
+      - name: base tools + docker cli + kubectl + kind
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git curl ca-certificates docker.io
+          curl -Lo /usr/local/bin/kubectl "https://dl.k8s.io/release/v1.29.2/bin/linux/amd64/kubectl"
+          chmod +x /usr/local/bin/kubectl
+          curl -Lo /usr/local/bin/kind https://github.com/kubernetes-sigs/kind/releases/download/v0.22.0/kind-linux-amd64
+          chmod +x /usr/local/bin/kind
+      - uses: actions/checkout@v4
+      - name: unique image tag for this run
+        id: tag
+        run: echo "TAG=relay-${GITHUB_RUN_NUMBER}-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+      - name: build image
+        run: |
+          docker build --network=host \
+            --build-arg http_proxy="${HTTP_PROXY:-${http_proxy:-}}" \
+            --build-arg https_proxy="${HTTPS_PROXY:-${https_proxy:-}}" \
+            -t agent-relay:${{ steps.tag.outputs.TAG }} .
+      - name: load image into kind
+        run: kind load docker-image agent-relay:${{ steps.tag.outputs.TAG }} --name relay
+      - name: roll out and WAIT for it
+        run: |
+          kubectl set image deployment/app app=agent-relay:${{ steps.tag.outputs.TAG }}
+          kubectl rollout status deployment/app --timeout=180s
+      - name: post-deploy smoke
+        run: |
+          kubectl get pods -l app=relay
+          echo "deployment image now: $(kubectl get deployment app -o jsonpath='{.spec.template.spec.containers[0].image}')"
+
