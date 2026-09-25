@@ -1,0 +1,50 @@
+diff --git a/database.py b/database.py
+index cc1898f..df7fdb3 100644
+--- a/database.py
++++ b/database.py
+@@ -189,7 +189,11 @@ def immediate_transaction() -> Generator[Session, None, None]:
+     connection = engine.connect()
+     session = Session(bind=connection, expire_on_commit=False, autoflush=True)
+     try:
+-        connection.exec_driver_sql("BEGIN IMMEDIATE")
++        if _is_sqlite(DATABASE_URL):
++            connection.exec_driver_sql("BEGIN IMMEDIATE")
++        # PostgreSQL: SQLAlchemy's autobegin already opened a transaction.
++        # Writer serialization comes from row locks (claim_one uses
++        # FOR UPDATE SKIP LOCKED) instead of SQLite-only BEGIN IMMEDIATE.
+         yield session
+         session.flush()
+         connection.commit()
+diff --git a/storage.py b/storage.py
+index 1c34f0e..98ac8ba 100644
+--- a/storage.py
++++ b/storage.py
+@@ -23,9 +23,11 @@ from sqlalchemy.orm import Session
+ from database import (
+     Agent,
+     Attempt,
++    DATABASE_URL,
+     LEASE_SECONDS,
+     MAX_ATTEMPTS,
+     Task,
++    _is_sqlite,
+     as_db_time,
+     db_session,
+     db_time,
+@@ -144,12 +146,15 @@ def claim_one(agent_id: str, worker_id: str | None) -> dict[str, Any] | None:
+     with immediate_transaction() as db:
+         now = utcnow()
+         recover_expired_in_session(db, now)
+-        task = db.scalar(
++        stmt = (
+             select(Task)
+             .where(Task.recipient_id == agent_id, Task.status == "queued")
+             .order_by(Task.created_at, Task.id)
+             .limit(1)
+         )
++        if not _is_sqlite(DATABASE_URL):
++            stmt = stmt.with_for_update(skip_locked=True)
++        task = db.scalar(stmt)
+         if task is None:
+             return None
+         if task.attempt_count >= MAX_ATTEMPTS:
