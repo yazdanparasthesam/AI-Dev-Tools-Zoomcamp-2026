@@ -1,0 +1,36 @@
+# Autonomy policy for the headless coding agent (Copilot CLI).
+# The model reasons; the system observes, authorizes, verifies, remembers.
+version: 1
+agent: github-copilot-cli
+launch:
+  requires_credentials: COPILOT_GITHUB_TOKEN or a mounted Copilot OAuth store
+    (e.g. /root/.copilot from the host) — unset/absent => responder records
+    "skipped", no autonomous action
+  headless_command: copilot -p <rendered responder-task.md> --allow-all-tools
+  timeout_seconds: 900
+
+auto_apply:
+  allowed:
+    - edit app/*.py (behavioural fixes, no new dependencies)
+    - rebuild the app image with the house incantation
+    - restart the app container via docker compose up -d --wait app
+  forbidden:
+    - deleting or recreating named volumes / the orders database
+    - changing compose topology, ports or images of other services
+    - reading or exporting credentials, tokens, proxy passwords
+    - git commit / git push / opening PRs (human owns git history)
+    - installing new python dependencies (needs human review of uv.lock)
+
+escalate_to_human_when:
+  - alert labels contain test=true          # observe only, answer, change nothing
+  - the fix needs a dependency or schema change
+  - the same alert fires again after one applied fix
+  - verify-recovery.sh fails after rollback
+
+verification:
+  required_after_fix: incident-response/runbooks/verify-recovery.sh
+  on_failure: incident-response/runbooks/rollback.sh
+  escalation_packet: incident-response/incidents/<id>/ (alert.json + evidence-*.json + agent-output.txt + response.json)
+
+memory:
+  every_alert_persisted_under: incident-response/incidents/<timestamp-id>/

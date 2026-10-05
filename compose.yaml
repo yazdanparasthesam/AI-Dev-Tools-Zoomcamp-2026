@@ -1,0 +1,125 @@
+name: order-tracker
+
+services:
+  app:
+    image: order-tracker:${ORDER_TRACKER_TAG:-local}
+    build: .
+    ports:
+      - "127.0.0.1:${ORDER_TRACKER_PORT:-8000}:8000"
+    environment:
+      ORDER_DB_PATH: /data/orders.db
+      OTEL_SERVICE_NAME: order-tracker
+      # flips app/telemetry.py from console export to the OTLP pipeline (Q3)
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    volumes:
+      - orders:/data
+    restart: unless-stopped
+    depends_on:
+      - otel-collector
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    command: ["--config=/etc/otel/collector.yaml"]
+    volumes:
+      - ./observability/collector.yaml:/etc/otel/collector.yaml:ro
+    ports:
+      - "127.0.0.1:4318:4318"   # OTLP/HTTP from the app
+      - "127.0.0.1:8889:8889"   # Prometheus exporter (scraped below)
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.1.1
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./observability/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:2.6.0
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "127.0.0.1:3200:3200"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./observability/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - ./observability/grafana/dashboards-provider.yaml:/etc/grafana/provisioning/dashboards/dashboards-provider.yaml:ro
+      - ./observability/grafana/dashboard.json:/etc/grafana/dashboards/dashboard.json:ro
+      # Q4: provisioned alerting (rule + contact point + policy)
+      - ./observability/alerts.yaml:/etc/grafana/provisioning/alerting/alerts.yaml:ro
+      - ./observability/contact-points.yaml:/etc/grafana/provisioning/alerting/contact-points.yaml:ro
+      - ./observability/notification-policies.yaml:/etc/grafana/provisioning/alerting/notification-policies.yaml:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # webhook → responder on host net
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+
+  # Q5: incident responder — Grafana alert webhook target, evidence store,
+  # and launcher of the headless coding assistant (Copilot CLI).
+  incident-responder:
+    image: order-tracker-responder:${ORDER_TRACKER_TAG:-local}
+    build:
+      context: ./incident-response
+    # host networking: the corporate proxy refuses TCP from the compose bridge
+    # netns (Connection refused), so the agent's GitHub egress must use the
+    # host stack. Evidence endpoints are all published on 127.0.0.1 anyway.
+    network_mode: host
+    environment:
+      COPILOT_GITHUB_TOKEN: ${COPILOT_GITHUB_TOKEN:-}
+      http_proxy: ${http_proxy:-}
+      https_proxy: ${https_proxy:-}
+      no_proxy: ${no_proxy:-}
+      REPO_DIR: /repo
+      INCIDENTS_DIR: /repo/incident-response/incidents
+    volumes:
+      - ./:/repo                                   # agent edits land in the real repo
+      - /var/run/docker.sock:/var/run/docker.sock  # agent may rebuild/restart app
+    restart: unless-stopped
+    depends_on:
+      - app
+      - grafana
+
+volumes:
+  orders:
+  prom-data:
+  loki-data:
+  tempo-data:
+  grafana-data:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${ORDER_TRACKER_SUBNET:-10.215.24.0/24}

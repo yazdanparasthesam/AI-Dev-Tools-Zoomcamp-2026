@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IncidentResponderResponse",
+  "type": "object",
+  "required": ["incident_id", "received_at", "alert", "test_mode", "agent", "decision"],
+  "properties": {
+    "incident_id": { "type": "string", "pattern": "^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$" },
+    "received_at": { "type": "string", "format": "date-time" },
+    "alert": {
+      "type": "object",
+      "required": ["status", "alertname", "endpoint"],
+      "properties": {
+        "status": { "type": ["string", "null"] },
+        "alertname": { "type": ["string", "null"] },
+        "labels": { "type": "object" },
+        "annotations": { "type": "object" },
+        "endpoint": { "type": "string" },
+        "dashboard_url": { "type": ["string", "null"] }
+      }
+    },
+    "test_mode": { "type": "boolean" },
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "collected": { "type": "boolean" },
+        "logs": { "type": "string" },
+        "traces": { "type": "string" },
+        "metrics": { "type": "string" }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["completed", "skipped", "timeout", "error"] },
+        "model": { "type": "string" },
+        "command": { "type": "string" },
+        "exit_code": { "type": "integer" },
+        "last_line": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    },
+    "policy": { "type": "string" },
+    "decision": {
+      "type": "object",
+      "required": ["action", "reason"],
+      "properties": {
+        "action": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    }
+  }
+}
