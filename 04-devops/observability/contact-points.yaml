@@ -1,0 +1,16 @@
+# Q4/Q6 — single contact point: the incident responder's webhook.
+# Until incident-response/ joins the compose file (step 6) sends simply
+# fail and are logged by Grafana; evaluation of the rule is unaffected.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: responder-webhook
+    receivers:
+      - uid: responder-webhook
+        type: webhook
+        settings:
+          # responder runs with network_mode: host (see compose.yaml), so it is
+          # reached through the host gateway alias, not a compose service name
+          url: http://host.docker.internal:8001/alerts
+          maxAlerts: 0
